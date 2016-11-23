@@ -133,6 +133,8 @@ elseif(WIN32)
         find_package(ZLIB REQUIRED)
         # tacked onto the end of OPENSSL_INCLUDE because the child src target forgets to use this properly
         list(APPEND OPENSSL_INCLUDE_DIR ${ZLIB_INCLUDE_DIRS})
+        # libressl doesn't ship with the cleanup method being used in ws_client_wspp
+        add_definitions(-DNO_SSL_LEAK_SUPPRESS)
     else()
         set(NUGET_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../packages")
         set(PACKAGE_PATHS)
