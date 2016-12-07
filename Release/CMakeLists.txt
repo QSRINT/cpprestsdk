@@ -101,15 +101,6 @@ elseif(UNIX) # This includes OSX
   endif()
 
   option(BUILD_SAMPLES "Build samples." ON)
-  option(CASA_INSTALL_HEADERS "Install header files." ON)
-  if(CASA_INSTALL_HEADERS)
-    file(GLOB CASA_HEADERS_CPPREST include/cpprest/*.hpp include/cpprest/*.h include/cpprest/*.dat)
-    install(FILES ${CASA_HEADERS_CPPREST} DESTINATION include/cpprest)
-    file(GLOB CASA_HEADERS_PPLX include/pplx/*.hpp include/pplx/*.h)
-    install(FILES ${CASA_HEADERS_PPLX} DESTINATION include/pplx)
-    file(GLOB CASA_HEADERS_DETAILS include/cpprest/details/*.hpp include/cpprest/details/*.h include/cpprest/details/*.dat)
-    install(FILES ${CASA_HEADERS_DETAILS} DESTINATION include/cpprest/details)
-  endif()
 elseif(WIN32)
   option(BUILD_SHARED_LIBS "Build shared Libraries." ON)
   option(BUILD_SAMPLES "Build samples." ON)
@@ -125,45 +116,23 @@ elseif(WIN32)
     set(Casablanca_DEFINITIONS "" CACHE INTERNAL "Definitions for consume casablanca library")
   endif()
   add_definitions(${Casablanca_DEFINITIONS} -D_WINSOCK_DEPRECATED_NO_WARNINGS -DWIN32)
-
-  if (NOT CPPREST_EXCLUDE_WEBSOCKETS)
-    if (DISABLE_NUGET_PATHS)
-        find_package(Boost REQUIRED COMPONENTS random chrono system thread regex filesystem)
-        find_package(OpenSSL REQUIRED)
-        find_package(ZLIB REQUIRED)
-        # tacked onto the end of OPENSSL_INCLUDE because the child src target forgets to use this properly
-        list(APPEND OPENSSL_INCLUDE_DIR ${ZLIB_INCLUDE_DIRS})
-        # libressl doesn't ship with the cleanup method being used in ws_client_wspp
-        add_definitions(-DNO_SSL_LEAK_SUPPRESS)
-    else()
-        set(NUGET_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../packages")
-        set(PACKAGE_PATHS)
-        list(APPEND PACKAGE_PATHS "${NUGET_PATH}/boost.1.58.0.0/")
-        list(APPEND PACKAGE_PATHS "${NUGET_PATH}/boost_system-vc140.1.58.0-vs140rc/")
-        list(APPEND PACKAGE_PATHS "${NUGET_PATH}/boost_date_time-vc140.1.58.0-vs140rc/")
-        list(APPEND PACKAGE_PATHS "${NUGET_PATH}/boost_regex-vc140.1.58.0-vs140rc/")
-        list(APPEND PACKAGE_PATHS "${NUGET_PATH}/openssl.v140.windesktop.msvcstl.static.rt-dyn.x64.1.0.2.1/")
-        list(APPEND PACKAGE_PATHS "${NUGET_PATH}/zlib.v140.windesktop.msvcstl.static.rt-dyn.1.2.8.8/")
-
-        if (NOT WINDOWS_STORE AND NOT WINDOWS_PHONE)
-          find_library(Boost_SYSTEM_LIBRARY libboost_system-vc140-mt-gd-1_58.lib PATHS ${PACKAGE_PATHS} PATH_SUFFIXES lib/native/address-model-64/lib)
-          find_library(Boost_DATE_TIME_LIBRARY libboost_date_time-vc140-mt-gd-1_58.lib PATHS ${PACKAGE_PATHS} PATH_SUFFIXES lib/native/address-model-64/lib)
-          find_library(Boost_REGEX_LIBRARY libboost_regex-vc140-mt-gd-1_58.lib PATHS ${PACKAGE_PATHS} PATH_SUFFIXES lib/native/address-model-64/lib)
-          set(Boost_LIBRARIES ${Boost_REGEX_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_DATE_TIME_LIBRARY})
-
-          find_library(OpenSSL_libeay_LIBRARY libeay32.lib PATHS ${PACKAGE_PATHS} PATH_SUFFIXES lib/native/v140/windesktop/msvcstl/static/rt-dyn/x64/debug)
-          find_library(OpenSSL_ssleay_LIBRARY ssleay32.lib PATHS ${PACKAGE_PATHS} PATH_SUFFIXES lib/native/v140/windesktop/msvcstl/static/rt-dyn/x64/debug)
-          find_library(ZLIB_LIBRARY zlibstaticd.lib PATHS ${PACKAGE_PATHS} PATH_SUFFIXES lib/native/v140/windesktop/msvcstl/static/rt-dyn/x64/debug)
-          set(OPENSSL_LIBRARIES ${OpenSSL_ssleay_LIBRARY} ${OpenSSL_libeay_LIBRARY} ${ZLIB_LIBRARY})
-
-          set(OPENSSL_INCLUDE_DIR "${NUGET_PATH}/openssl.v140.windesktop.msvcstl.static.rt-dyn.x64.1.0.2.1/build/native/include")
-        endif()
-
-        set(Boost_INCLUDE_DIR "${NUGET_PATH}/boost.1.58.0.0/lib/native/include")
-    endif()
-  endif()
+  if (NOT CPPREST_EXCLUDE_WEBSOCKETS AND NOT WINDOWS_STORE)
+    find_package(ZLIB REQUIRED)
+    find_package(OpenSSL REQUIRED)
+    find_package(Boost REQUIRED COMPONENTS regex system date_time)
+   endif()
 else()
   message(FATAL_ERROR "-- Unsupported Build Platform.")
+endif()
+
+option(CASA_INSTALL_HEADERS "Install header files." ON)
+if(CASA_INSTALL_HEADERS)
+  file(GLOB CASA_HEADERS_CPPREST include/cpprest/*.hpp include/cpprest/*.h include/cpprest/*.dat)
+  install(FILES ${CASA_HEADERS_CPPREST} DESTINATION include/cpprest)
+  file(GLOB CASA_HEADERS_PPLX include/pplx/*.hpp include/pplx/*.h)
+  install(FILES ${CASA_HEADERS_PPLX} DESTINATION include/pplx)
+  file(GLOB CASA_HEADERS_DETAILS include/cpprest/details/*.hpp include/cpprest/details/*.h include/cpprest/details/*.dat)
+  install(FILES ${CASA_HEADERS_DETAILS} DESTINATION include/cpprest/details)
 endif()
 
 # Compiler (not platform) specific settings
@@ -235,6 +204,21 @@ if (NOT CPPREST_EXCLUDE_WEBSOCKETS)
     list(APPEND Casablanca_SYSTEM_INCLUDE_DIRS ${Boost_INCLUDE_DIR} ${OPENSSL_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/libs/websocketpp)
     message("-- websocketpp not found, using the embedded version")
   endif(WEBSOCKETPP_CONFIG AND WEBSOCKETPP_CONFIG_VERSION)
+
+  INCLUDE(CheckCXXSourceCompiles)
+  set(CMAKE_REQUIRED_INCLUDES "${OPENSSL_INCLUDE_DIR}")
+  set(CMAKE_REQUIRED_LIBRARIES "${OPENSSL_LIBRARIES}")
+  CHECK_CXX_SOURCE_COMPILES("
+    #include <openssl/ssl.h>
+    int main()
+    {
+    ::SSL_COMP_free_compression_methods();
+    }
+  " _SSL_LEAK_SUPPRESS_AVAILABLE)
+  if (NOT _SSL_LEAK_SUPPRESS_AVAILABLE)
+    # libressl doesn't ship with the cleanup method being used in ws_client_wspp
+    add_definitions(-DCPPREST_NO_SSL_LEAK_SUPPRESS)
+  endif()
 endif()
 
 set(Casablanca_LIBRARY cpprest)
